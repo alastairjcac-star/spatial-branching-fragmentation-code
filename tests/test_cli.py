@@ -1,4 +1,4 @@
-"""Exercise the saved demonstration and reproduce it from its source archive."""
+"""Exercise separate simulation/plot commands and replay a saved source archive."""
 
 import csv
 import hashlib
@@ -10,13 +10,15 @@ import sys
 import tarfile
 from pathlib import Path
 
+import pytest
 
-def invoke(root, config, output):
+
+def invoke(root, *arguments):
     environment = os.environ.copy()
     environment["PYTHONPATH"] = str(root / "src")
     environment["MPLCONFIGDIR"] = str(root / "results/matplotlib-cache")
     return subprocess.run(
-        [sys.executable, "-m", "spine_sim.cli", "--config", config, "--output", output],
+        [sys.executable, "-m", "spine_sim.cli", *arguments],
         cwd=root,
         env=environment,
         capture_output=True,
@@ -25,7 +27,8 @@ def invoke(root, config, output):
     )
 
 
-def test_cli_snapshot_replays_exact_estimates(tmp_path):
+@pytest.fixture
+def checkout(tmp_path):
     original = Path(__file__).parents[1]
     root = tmp_path / "checkout"
     root.mkdir()
@@ -43,7 +46,12 @@ def test_cli_snapshot_replays_exact_estimates(tmp_path):
     settings = json.loads((original / "examples/reference.json").read_text())
     settings.update(histories=12, observation_times=[0, 0.5, 2])
     (root / "small.json").write_text(json.dumps(settings))
-    invoke(root, "small.json", "results/test")
+    return root
+
+
+def test_cli_snapshot_replays_exact_estimates(checkout, tmp_path):
+    root = checkout
+    invoke(root, "simulate", "--config", "small.json", "--output", "results/test")
     output = root / "results/test"
     metadata = json.loads((output / "metadata.json").read_text())
     assert metadata["history_count_total"] == 24
@@ -59,8 +67,40 @@ def test_cli_snapshot_replays_exact_estimates(tmp_path):
         rows = list(csv.DictReader(stream))
     assert len(rows) == 2 * 3 * 3 * 2
     assert {int(row["n"]) for row in rows} == {12}
-    assert (output / "counts.png").stat().st_size > 1000
-    assert (output / "counts.pdf").stat().st_size > 1000
+    assert set(metadata["outputs_sha256"]) == {"config.json", "estimates.csv"}
+    assert not (output / "counts.png").exists()
+    assert not (output / "counts.pdf").exists()
+    original_files = {
+        name: (output / name).read_bytes()
+        for name in ("config.json", "estimates.csv", "metadata.json", "source.tar.gz")
+    }
+    invoke(root, "plot", "--input", "results/test", "--output", "results/plots")
+    plot_output = root / "results/plots"
+    plot_metadata = json.loads((plot_output / "plot-metadata.json").read_text())
+    for name in ("counts.png", "counts.pdf"):
+        assert (plot_output / name).stat().st_size > 1000
+        assert (
+            hashlib.sha256((plot_output / name).read_bytes()).hexdigest()
+            == plot_metadata["outputs_sha256"][name]
+        )
+    for name, expected in plot_metadata["input_sha256"].items():
+        assert hashlib.sha256((output / name).read_bytes()).hexdigest() == expected
+    assert (plot_output / "source.tar.gz").is_file()
+    invoke(
+        root,
+        "plot",
+        "--input",
+        "results/test",
+        "--output",
+        "results/retitled",
+        "--title",
+        "The same estimates, a different title",
+    )
+    retitled = json.loads((root / "results/retitled/plot-metadata.json").read_text())
+    assert retitled["title"] == "The same estimates, a different title"
+    assert retitled["input_sha256"] == plot_metadata["input_sha256"]
+    for name, content in original_files.items():
+        assert (output / name).read_bytes() == content
     replay = tmp_path / "replay"
     replay.mkdir()
     with tarfile.open(output / "source.tar.gz") as archive:
@@ -70,14 +110,32 @@ def test_cli_snapshot_replays_exact_estimates(tmp_path):
         )
         archive.extractall(replay, filter="data")
     shutil.copy2(output / "config.json", replay / "run-config.json")
-    invoke(replay, "run-config.json", "results/reproduced-demo")
+    invoke(
+        replay,
+        "simulate",
+        "--config",
+        "run-config.json",
+        "--output",
+        "results/reproduced-demo",
+    )
     assert (output / "estimates.csv").read_bytes() == (
         replay / "results/reproduced-demo/estimates.csv"
     ).read_bytes()
     # A completed run is protected against accidental overwriting.
-    try:
-        invoke(root, "small.json", "results/test")
-    except subprocess.CalledProcessError as error:
-        assert "File exists" in error.stderr
-    else:
-        raise AssertionError("existing output was overwritten")
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        invoke(root, "simulate", "--config", "small.json", "--output", "results/test")
+    assert "File exists" in error.value.stderr
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        invoke(root, "plot", "--input", "results/test", "--output", "results/plots")
+    assert "File exists" in error.value.stderr
+
+
+def test_legacy_flags_alias_simulation_without_figures(checkout):
+    invoke(checkout, "--config", "small.json", "--output", "results/legacy")
+    invoke(
+        checkout, "simulate", "--config", "small.json", "--output", "results/explicit"
+    )
+    assert (checkout / "results/legacy/estimates.csv").read_bytes() == (
+        checkout / "results/explicit/estimates.csv"
+    ).read_bytes()
+    assert not (checkout / "results/legacy/counts.png").exists()

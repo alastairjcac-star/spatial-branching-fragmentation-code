@@ -20,7 +20,8 @@ TODOs.
 
 - `src/spine_sim/`: reusable implementation and command-line interface.
 - `tests/`: meaningful mathematical and implementation checks.
-- `examples/`: tracked, small configurations and runnable examples.
+- `experiments/`: named studies with tracked configurations and run instructions.
+- `examples/`: small API examples; retain the legacy reference configuration.
 - `docs/`: model specification, numerical conventions, and reproduction.
 - `results/`: generated outputs, ignored by Git.
 
@@ -51,6 +52,12 @@ mathematical rate parameters. Describe exactness only for the finite-observation
 law of this particular model in ideal arithmetic, with numerical limitations
 stated separately.
 
+Keep simulation and postprocessing separate. `simulate` writes estimates and
+provenance; `plot` reads those saved results without drawing histories or
+changing input files. Analytical validation reports supplement automated
+tests. Preserve the numerical core and stream policy during workflow refactors
+unless a mathematical change is explicitly requested and justified.
+
 ## Reproducibility and checks
 
 Every experiment must save model parameters, observation grid, initial types,
@@ -65,6 +72,13 @@ and initial types. Record changes to stream mapping. Generated results and
 local environments remain ignored; do not hand-edit or commit generated output
 unless explicitly requested. Do not copy private data into run snapshots.
 
+Record plotting input hashes, settings, environment, and source separately
+from simulation provenance, so revised figures can be reproduced from existing
+estimates. Require new output directories rather than overwriting run records.
+When updating experiment configurations, identify whether changes alter the
+model, sampling, or presentation. Keep the compatibility reference configuration
+consistent with `experiments/reference/config.json`.
+
 Add substantive checks for simulation changes: invariants, limiting cases,
 analytic sampling identities, event scheduling, and estimator behaviour.
 Seed statistical checks and use justified tolerances. Numerical agreement is
@@ -77,7 +91,9 @@ uv run --locked ruff format --check .
 uv run --locked pytest
 ```
 
-For packaging or example changes also run `uv build --no-sources` and the small
-example documented in README, using a new output directory. Report unresolved
+For packaging or experiment changes also run `uv build --no-sources` and the
+separate simulate, plot, and validation commands documented in README, using
+new output directories. Check that plotting does not invoke simulation and
+that an unchanged seeded configuration preserves its estimates. Report unresolved
 failures and numerical limitations. Do not push commits, change repository
 visibility, or publish packages without explicit authorization.
