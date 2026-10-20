@@ -69,10 +69,6 @@ def simulate_spine(
     allowed. Rates are per unit track length. The weight integrates out the
     additional killing clock: W = exp(-alpha * total_electron_track_length).
 
-    Pass rng to reuse a generator across Monte Carlo histories, or pass seed
-    to reproduce one path with a new generator. Do not supply both. With
-    neither supplied, a new generator is initialised from system randomness.
-    The function returns observations without printing or writing files.
     """
     times = [float(t) for t in observation_times]
     if not times or any(not math.isfinite(t) or t < 0 for t in times):

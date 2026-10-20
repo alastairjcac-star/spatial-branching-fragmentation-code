@@ -38,15 +38,11 @@ def estimate_counts_for_thresholds(
     """Return a dictionary mapping each threshold to count-estimate rows.
 
     Each row is (ell, electron_mean, electron_se, photon_mean, photon_se).
-    n is the number of spine histories for the chosen initial type. All
-    thresholds, counted types and observation lengths use those histories,
-    so their estimates are correlated. Standard errors are pointwise.
-    Thresholds must be distinct; dictionary order follows the supplied order.
-    A zero standard error from all-zero contributions can miss rare events.
+    n is the number of spine histories for the chosen initial type. 
 
     With return_nonzero=True, return (results, nonzero_counts). For each
     threshold, nonzero_counts contains [electron_count, photon_count] pairs
-    in observation order. They count contributing histories, not particles.
+    in observation order.
     """
     if isinstance(n, bool) or not isinstance(n, int) or n < 2:
         raise ValueError("n must be an integer of at least 2 to estimate uncertainty.")
@@ -147,8 +143,7 @@ def estimate_counts(
 def save_counts_csv(filename, results_by_initial_type, nonzero_by_initial_type):
     """Save one row per initial type, threshold, observation and counted type.
 
-    Estimated counts already equal C_theta,j / theta: no further scaling is
-    applied. Floats are saved at full Python precision, unlike the printout.
+    Estimated counts already equal C_theta,j / theta.
     """
     fieldnames = (
         "initial_type",
